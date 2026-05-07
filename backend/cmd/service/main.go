@@ -17,6 +17,8 @@ import (
 	"github.com/joho/godotenv"
 )
 
+var lowBalanceAlertFlag bool
+
 type ServiceConfig struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -30,7 +32,23 @@ type requestToIfreeiCloud struct {
 	Key     string `json:"key"`
 }
 
-type objectResponseByIfreeiCloud struct { // Является полем Object в ответе ifreeiCloud
+type requestToCheckBalance struct {
+	AccountInfo string `json:"accountinfo"`
+	Key         string `json:"key"`
+}
+
+type balanceObject struct {
+	AccountBalance   float64 `json:"account_balance"`
+	AvailableBalance float64 `json:"available_balance"`
+}
+
+type balanceResponse struct {
+	Success bool          `json:"success"`
+	Error   string        `json:"error"`
+	Object  balanceObject `json:"object"`
+}
+
+type objectResponseByIfreeiCloud struct {
 	Image           string `json:"thumbnail"`
 	ModelDesc       string `json:"modelDesc"`
 	Model           string `json:"model"`
@@ -67,7 +85,7 @@ var serviceConfigs []ServiceConfig
 
 type CheckRequest struct {
 	Identifier string `json:"identifier"`
-	Token	   string `json:"token"`
+	Token      string `json:"token"`
 }
 
 type CheckResponse struct {
@@ -101,6 +119,75 @@ func init() {
 
 func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "Успешно запущено")
+}
+
+func checkBalance() (float64, error) {
+	ifreeiCloudAPI := serviceConfigs[0]
+
+	data := url.Values{}
+	data.Set("accountinfo", "balance")
+	data.Set("key", ifreeiCloudAPI.Key)
+
+	client := &http.Client{
+		Timeout: 25 * time.Second,
+	}
+
+	req, err := http.NewRequest(http.MethodPost, ifreeiCloudAPI.URL, strings.NewReader(data.Encode()))
+	if err != nil {
+		return -1, fmt.Errorf("Ошибка при формировании http запроса: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return -1, fmt.Errorf("Сервер ifreeiCloud недоступен: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var apiResult balanceResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResult); err != nil {
+		return -1, fmt.Errorf("Ошибка чтения ответа: %v", err)
+	}
+
+	if !apiResult.Success {
+		return -1, fmt.Errorf("Ошибка API: %s", apiResult.Error)
+	}
+
+	return apiResult.Object.AvailableBalance, nil
+}
+
+func startBalanceMonitor(bot *telegrambot.Bot) {
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		<-ticker.C
+
+		balance, err := checkBalance()
+		if err != nil {
+			log.Printf("Ошибка проверки баланса: %v", err)
+			continue
+		}
+
+		bot.SetBalance(balance)
+
+		if balance <= 1.0 && !lowBalanceAlertFlag {
+			msg := fmt.Sprintf("Внимание! Баланс сервиса критически мал: $%.3f", balance)
+			bot.NotifyAdmins(msg)
+
+			lowBalanceAlertFlag = true
+			log.Println("Уведомление о низком балансе отправлено админам")
+		}
+
+		if balance > 1.0 && lowBalanceAlertFlag {
+			msg := fmt.Sprintf("✅ Баланс ifreeiCloud успешно пополнен. Текущий баланс: $%.3f", balance)
+			bot.NotifyAdmins(msg)
+
+			lowBalanceAlertFlag = false
+			log.Println("Баланс успешно пополнен")
+		}
+	}
 }
 
 func checkIfreeiCloudAPI(identifier string) (*fullResponseByIfreeiCloud, error) {
@@ -224,17 +311,20 @@ func main() {
 		log.Fatalf("Критическая ошибка базы данных: %v", err)
 	}
 	defer dbTokens.Close()
-	
+
 	tgBot, err := telegrambot.NewBot(dbTokens)
 	if err != nil {
 		log.Printf("Ошибка инициализации бота: %v", err)
 	} else {
 		go tgBot.Start()
 		log.Printf("Бот успешно запущен")
+
+		go startBalanceMonitor(tgBot)
 	}
 
 	http.HandleFunc("/api/health", healthCheckHandler)
 	http.HandleFunc("/api/check", checkHandler(dbTokens))
+	http.Handle("/", http.FileServer(http.Dir("./frontend")))
 
 	port := os.Getenv("SERVER_PORT")
 	if port == "" {

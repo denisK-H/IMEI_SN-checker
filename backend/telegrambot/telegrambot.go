@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/denisK-H/imei-sn_checker/backend/storage"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -16,6 +17,9 @@ type Bot struct {
 	store    *storage.Storage
 	adminIDs map[int64]bool
 	sessions map[int64]*Session
+
+	balanceMutex   sync.RWMutex
+	currentBalance float64
 }
 
 type Session struct {
@@ -69,15 +73,11 @@ func NewBot(s *storage.Storage) (*Bot, error) {
 		tgbotapi.BotCommand{
 			Command:     "list",
 			Description: "Показать все токены (активные и деактивированные)",
+		},
+		tgbotapi.BotCommand{
+			Command:     "balance",
+			Description: "Проверить баланс",
 		})
-		// tgbotapi.BotCommand{
-		// 	Command:     "revoke",
-		// 	Description: "Деактивировать токен",
-		// },
-		// tgbotapi.BotCommand{
-		// 	Command:     "activate",
-		// 	Description: "Aктивировать токен",
-		// })
 	if _, err := api.Request(commands); err != nil {
 		log.Printf("Ошибка при установки команд в меню :%v", err)
 	}
@@ -88,6 +88,18 @@ func NewBot(s *storage.Storage) (*Bot, error) {
 		adminIDs: adminIDs,
 		sessions: make(map[int64]*Session),
 	}, nil
+}
+
+func (b *Bot) SetBalance(balance float64) {
+	b.balanceMutex.Lock()
+	defer b.balanceMutex.Unlock()
+	b.currentBalance = balance
+}
+
+func (b *Bot) GetBalance() float64 {
+	b.balanceMutex.RLock()
+	defer b.balanceMutex.RUnlock()
+	return b.currentBalance
 }
 
 func (b *Bot) Start() {
@@ -151,6 +163,24 @@ func (b *Bot) handleCallback(query *tgbotapi.CallbackQuery) {
 		return
 	}
 
+	if strings.HasPrefix(data, "revoke_") {
+		idStr := strings.TrimPrefix(data, "revoke_")
+		id, _ := strconv.Atoi(idStr)
+		tokenData, err := b.store.GetTokenById(id)
+		if err == nil {
+			b.store.RevokeToken(tokenData.Token)
+			data = "info_" + idStr
+		}
+	} else if strings.HasPrefix(data, "activate_") {
+		idStr := strings.TrimPrefix(data, "activate_")
+		id, _ := strconv.Atoi(idStr)
+		tokenData, err := b.store.GetTokenById(id)
+		if err == nil {
+			b.store.ActivateToken(tokenData.Token)
+			data = "info_" + idStr
+		}
+	}
+
 	if strings.HasPrefix(data, "info_") {
 		idStr := strings.TrimPrefix(data, "info_")
 		id, _ := strconv.Atoi(idStr)
@@ -176,9 +206,19 @@ func (b *Bot) handleCallback(query *tgbotapi.CallbackQuery) {
 			tokenData.Id, tokenData.Token, tokenData.TelegramID, tokenData.Label, tokenData.CountRequest, status, tokenData.CreatedAt,
 		)
 
-		backBtn := tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("🔙 Вернуться к списку", "page_0")))
+		var actionBtn tgbotapi.InlineKeyboardButton
+		if tokenData.IsActive {
+			actionBtn = tgbotapi.NewInlineKeyboardButtonData("🔴 Деактивировать", fmt.Sprintf("revoke_%d", tokenData.Id))
+		} else {
+			actionBtn = tgbotapi.NewInlineKeyboardButtonData("🟢 Активировать", fmt.Sprintf("activate_%d", tokenData.Id))
+		}
 
-		edit := tgbotapi.NewEditMessageTextAndMarkup(query.Message.Chat.ID, query.Message.MessageID, text, backBtn)
+		keyboard := tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(actionBtn), // Наша новая кнопка действий
+			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("🔙 Вернуться к списку", "page_0")),
+		)
+
+		edit := tgbotapi.NewEditMessageTextAndMarkup(query.Message.Chat.ID, query.Message.MessageID, text, keyboard)
 		b.api.Send(edit)
 		return
 	}
@@ -235,9 +275,8 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 		b.sendMessage(message.Chat.ID,
 			`Привет, это панель администратора. Доступные команды:
 /new - Создать новый токен
-/list - Показать все токены (активные и деактивированные)`)
-// /revoke - Деактивировать токен
-// /activate - Aктивировать токен
+/list - Показать все токены (активные и деактивированные)
+/balance - Показать баланс (обновляется раз в 10 минут)`)
 
 	case "new":
 		b.sessions[message.Chat.ID] = &Session{step: "wait_id"}
@@ -259,6 +298,19 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 		_, err = b.api.Send(msg)
 		if err != nil {
 			log.Printf("Ошибка при отправке сообщения (%s), в чат %d : %v", msg.Text, message.Chat.ID, err)
+		}
+
+	case "balance":
+		bal := b.GetBalance()
+		msg := fmt.Sprintf("Текущий баланс: $%.3f (Обновляется раз в 10 минут)", bal)
+		b.sendMessage(message.Chat.ID, msg)
+	}
+}
+
+func (b *Bot) NotifyAdmins(message string) {
+	for adminId, isAdmin := range b.adminIDs {
+		if isAdmin {
+			b.sendMessage(adminId, message)
 		}
 	}
 }
