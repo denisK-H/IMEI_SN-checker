@@ -69,15 +69,15 @@ func NewBot(s *storage.Storage) (*Bot, error) {
 		tgbotapi.BotCommand{
 			Command:     "list",
 			Description: "Показать все токены (активные и деактивированные)",
-		},
-		tgbotapi.BotCommand{
-			Command:     "revoke",
-			Description: "Деактивировать токен",
-		},
-		tgbotapi.BotCommand{
-			Command:     "activate",
-			Description: "Aктивировать токен",
 		})
+		// tgbotapi.BotCommand{
+		// 	Command:     "revoke",
+		// 	Description: "Деактивировать токен",
+		// },
+		// tgbotapi.BotCommand{
+		// 	Command:     "activate",
+		// 	Description: "Aктивировать токен",
+		// })
 	if _, err := api.Request(commands); err != nil {
 		log.Printf("Ошибка при установки команд в меню :%v", err)
 	}
