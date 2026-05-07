@@ -295,7 +295,7 @@ func buildPaginationKeyboard(tokens []storage.TokenData, page int) tgbotapi.Inli
 			status = "🔴"
 		}
 
-		btnText := fmt.Sprintf("%s %d, @%s, %s", status, t.Id, t.TelegramID, t.Label)
+		btnText := fmt.Sprintf("%s %d, %s, %s", status, t.Id, t.TelegramID, t.Label)
 		btnData := fmt.Sprintf("info_%d", t.Id)
 
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData(btnText, btnData)))
