@@ -235,9 +235,9 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 		b.sendMessage(message.Chat.ID,
 			`Привет, это панель администратора. Доступные команды:
 /new - Создать новый токен
-/list - Показать все токены (активные и деактивированные)
-/revoke - Деактивировать токен
-/activate - Aктивировать токен`)
+/list - Показать все токены (активные и деактивированные)`)
+// /revoke - Деактивировать токен
+// /activate - Aктивировать токен
 
 	case "new":
 		b.sessions[message.Chat.ID] = &Session{step: "wait_id"}
