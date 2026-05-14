@@ -242,18 +242,21 @@
             resultPanel.innerHTML = `
                 <div class="device-header">
                     ${obj.thumbnail ? `<img src="${obj.thumbnail}" class="device-img" alt="Device">` : ''}
-                    <div class="device-title">${obj.modelDesc || obj.model || "Apple Device"}</div>
+                    <div class="device-title">${obj.modelDesc || obj.model || "Устройство Apple"}</div>
                 </div>
 
-                <div class="info-row"><span class="info-label">Model:</span> <span class="info-value">${obj.model || '-'}</span></div>
-                <div class="info-row"><span class="info-label">Network:</span> <span class="info-value">${obj.network || '-'}</span></div>
-                <div class="info-row"><span class="info-label">IMEI Number:</span> <span class="info-value">${obj.imei || '-'}</span></div>
-                <div class="info-row"><span class="info-label">Serial Number:</span> <span class="info-value">${obj.serial || '-'}</span></div>
-                <div class="info-row"><span class="info-label">Warranty Status:</span> <span class="info-value">${obj.warrantyStatus || '-'}</span></div>
-                <div class="info-row"><span class="info-label">Est. Purchase Date:</span> <span class="info-value">${obj.estPurchaseDate || '-'}</span></div>
+                <div class="info-row"><span class="info-label">Модель:</span> <span class="info-value">${obj.model || '-'}</span></div>
+                <div class="info-row"><span class="info-label">Регион:</span> <span class="info-value">${obj.network || '-'}</span></div>
+                <div class="info-row"><span class="info-label">IMEI:</span> <span class="info-value">${obj.imei || '-'}</span></div>
                 
+                ${obj.imei2 ? `<div class="info-row"><span class="info-label">IMEI 2:</span> <span class="info-value">${obj.imei2}</span></div>` : ''}
+                
+                <div class="info-row"><span class="info-label">Серийный номер:</span> <span class="info-value">${obj.serial || '-'}</span></div>
+                <div class="info-row"><span class="info-label">Статус гарантии:</span> <span class="info-value">${obj.warrantyStatus || '-'}</span></div>
+                <div class="info-row"><span class="info-label">Дата покупки:</span> <span class="info-value">${obj.estPurchaseDate || '-'}</span></div>
+
                 <br>
-                <div class="info-row"><span class="info-label">Find My iPhone:</span> <span class="info-value">${getBadge(!obj.fmiOn, 'OFF', 'ON')}</span></div>
+                <div class="info-row"><span class="info-label">Find My iPhone/Mac:</span> <span class="info-value">${getBadge(!obj.fmiOn, 'OFF', 'ON')}</span></div>
             `;
 
             container.classList.add('expanded');

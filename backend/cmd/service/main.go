@@ -324,7 +324,6 @@ func main() {
 
 	http.HandleFunc("/api/health", healthCheckHandler)
 	http.HandleFunc("/api/check", checkHandler(dbTokens))
-	http.Handle("/", http.FileServer(http.Dir("./frontend")))
 
 	port := os.Getenv("SERVER_PORT")
 	if port == "" {
